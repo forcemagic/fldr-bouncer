@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>weBreak Dashboard</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.1/css/bulma.min.css">
+</head>
+<body>
+  <section class="section">
+    <div id="vue-root" class="container">
+      <h1 class="title">weBreak broker guiding {{ Object.keys(reports).length }} clients with {{ getAggregate() }} active connections</h1>
+      <p class="subtitle">Speeding with {{ speedMbytes }} MB/s (total {{ getSentMbytes() }} MB)</p>
+      <h2 class="is-size-4 mb-2">Xploit Configuration</h2>
+      <form v-if="!configLoading" class="block" @submit.prevent="updateConfig">
+        <div class="field is-horizontal">
+          <div class="field-label">
+            <label for="enabled_check" class="label">Enabled</label>
+          </div>
+          <div class="field-body">
+            <div class="field is-expanded">
+              <label class="checkbox">
+                <input id="enabled_check" type="checkbox" v-model="config.enabled">
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="field is-horizontal">
+          <div class="field-label is-normal">
+            <label class="label">Target</label>
+          </div>
+          <div class="field-body">
+            <div class="field is-expanded">
+              <div class="field has-addons">
+                <p class="control">
+                  <a class="button is-static">Host/IP</a>
+                </p>
+                <div class="control is-expanded">
+                  <input type="text" class="input" v-model="config.IP" />
+                </div>
+              </div>
+            </div>
+            <div class="field">
+              <div class="field has-addons">
+                <p class="control">
+                  <a class="button is-static">Port</a>
+                </p>
+                <div class="control">
+                  <input type="text" class="input" v-model.number="config.port" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="field is-horizontal">
+          <div class="field-label is-normal">
+            <label class="label">HTTP payload</label>
+          </div>
+          <div class="field-body">
+            <div class="field is-expanded">
+              <div class="field has-addons">
+                <p class="control">
+                  <span class="select">
+                    <select v-model="config.method">
+                      <option>GET</option>
+                      <option>POST</option>
+                    </select>
+                  </span>
+                </p>
+                <div class="control is-expanded">
+                  <input type="text" class="input" v-model="config.path">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="field is-horizontal" v-for="host, i in config.hosts">
+          <div class="field-label is-normal">
+            <label v-if="i == 0" class="label">Host(s)</label>
+          </div>
+          <div class="field-body">
+            <div class="field is-expanded">
+              <div class="field has-addons">
+                <div class="control is-expanded">
+                  <input type="text" class="input" v-model="config.hosts[i]">
+                </div>
+                <p class="control">
+                  <a v-if="i == config.hosts.length-1" class="button is-info" @click="() => config.hosts.push('')">Add</a>
+                  <a v-else class="button is-danger" @click="() => config.hosts.splice(i, 1)">Del</a>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="field is-horizontal">
+          <div class="field-label">
+            <label class="label">Enable TLS</label>
+          </div>
+          <div class="field-body">
+            <div class="field">
+              <div class="control">
+                <label class="checkbox">
+                  <input type="checkbox" v-model="config.doTLS">
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="field is-horizontal">
+          <div class="field-label">
+            <label class="label">Enable Slowloris</label>
+          </div>
+          <div class="field-body">
+            <div class="field">
+              <div class="control">
+                <label class="checkbox">
+                  <input type="checkbox" v-model="config.doSlowpost">
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="field is-horizontal">
+          <div class="field-label">
+            <label class="label">JSON representation</label>
+          </div>
+          <div class="field-body">
+            <div class="field">
+              <code>{{ JSON.stringify(config) }}</code>
+            </div>
+          </div>
+        </div>
+        <div class="field is-horizontal">
+          <div class="field-label"></div>
+          <div class="field-body">
+            <div class="field">
+              <div class="control">
+                <button type="submit" class="button is-primary" :class='{"is-loading": sendingConfig}'>Update</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </form>
+      <div class="table-container">
+        <table class="table is-fullwidth is-hoverable">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Status</th>
+              <th>Connections</th>
+              <th>Redials</th>
+              <th>Sent (bytes)</th>
+              <th>Last Error</th>
+            </tr>
+          </thead>
+          <tbody v-for="report, id in reports" :key="id">
+            <tr v-for="subrep, i in report" :key="i">
+              <th :rowspan="report.length" v-if="i == 0">{{ id }}</th>
+              <td>{{ subrep.Status }}</td>
+              <td>{{ subrep.Act }}</td>
+              <td>{{ subrep.Redials }}</td>
+              <td>{{ subrep.Sent }}</td>
+              <td>{{ subrep.LastErr }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.12"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <script>
+    const vm = new Vue({
+      el: '#vue-root',
+      data: {
+        reports: {},
+        configLoading: true,
+        config: {},
+        sendingConfig: false,
+        lastReport: null,
+        speedMbytes: 0,
+      },
+      methods: {
+        updateConfig() {
+          this.sendingConfig = true;
+          axios.post('/config', this.config).then(() => {
+            this.sendingConfig = false;
+          });
+        },
+        getAggregate() {
+          let coll = 0;
+          for (const k in this.reports) {
+            if (Object.hasOwnProperty.call(this.reports, k)) {
+              const el = this.reports[k];
+              for (let i = 0; i < el.length; i++) {
+                coll += el[i].Act;
+              }
+            }
+          }
+          return coll;
+        },
+        getSentMbytes() {
+          let coll = 0;
+          for (const k in this.reports) {
+            if (Object.hasOwnProperty.call(this.reports, k)) {
+              const el = this.reports[k];
+              for (let i = 0; i < el.length; i++) {
+                coll += el[i].Sent;
+              }
+            }
+          }
+          return Math.round(coll / 1024 / 1024 * 100) / 100;
+        },
+      },
+      mounted() {
+        axios.get('/config').then((resp) => {
+          this.config = resp.data;
+          this.configLoading = false;
+        });
+        setInterval(() => {
+          axios.get('/xhr').then((resp) => {
+            const oldMbytes = this.getSentMbytes();
+            this.reports = resp.data;
+            if (this.lastReport != null) {
+              this.speedMbytes = Math.round((this.getSentMbytes() - oldMbytes) / ((new Date().getTime() - this.lastReport)/1000) * 100) / 100;
+            }
+            this.lastReport = new Date().getTime();
+          });
+        }, 1000);
+      }
+    });
+  </script>
+</body>
+</html>
